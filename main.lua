@@ -1,7 +1,12 @@
+local lustache = require("lustache")
 local CHUNKS = {
     heads = {},
     bodies = {}
 }
+
+local function trimFloat(value)
+    return string.format("%.6f", value)
+end
 
 local function chunk(name, head, body, chunks)
     chunks = chunks or CHUNKS
@@ -13,7 +18,16 @@ local function chunk(name, head, body, chunks)
     end
 end
 
-local function process(text, chunks, included)
+local function defaultChunks()
+    return tableHelper.shallowCopy(CHUNKS)
+end
+
+local function render(text, env)
+    return lustache:render(text, env)
+end
+
+local function process(text, env, chunks, included)
+    env = env or {}
     chunks = chunks or CHUNKS
     included = included or {}
     local text = string.gsub(text, "``.-``", function(name)
@@ -23,12 +37,12 @@ local function process(text, chunks, included)
         end
         if not included[name] then
             included[name] = true
-            return process(chunks.heads[name], chunks, included)
+            return process(chunks.heads[name], env, chunks, included)
         else
             return ""
         end
     end)
-    return (string.gsub(text,  "`.-`", function(name)
+    return render((string.gsub(text,  "`.-`", function(name)
         name = string.sub(name, 2, -2)
         if not chunks.bodies[name] then
             error("[MWS-Template] Unknown chunk body " .. name)
@@ -36,11 +50,13 @@ local function process(text, chunks, included)
         if chunks.heads[name] ~= nil and not included[name] then
             error("[MWS-Template] Missing chunk head for " .. name)
         end
-        return process(chunks.bodies[name], chunks, included)
-    end))
+        return process(chunks.bodies[name], env, chunks, included)
+    end)), env)
 end
 
 -- included chunks
+
+chunk('PI', nil, [[3.1415926]])
 
 -- Bhaskara sine approximation
 chunk('SINE',
@@ -70,17 +86,6 @@ set SINE_in to 90 - COSINE_in
 `SINE`
 set COSINE_out to SINE_out
 ]])
-
---[[
-local LN_body = { "LN_out = 0" }
-for k = 1, 5 do
-    table.insert(LN_body, "set LN_t to (" .. 2 / (2 * k + 1) .. ")")
-    for i = 1, k do
-        table.insert(LN_body, "set LN_t to ( LN_t * (LN_in - 1) / (LN_in + 1) )")
-    end
-    table.insert(LN_body, "set LN_out to ( LN_out + LN_t )")
-end
-]]
 
 local LN_body = { "LN_out = 0" }
 local steps = 5
@@ -112,6 +117,7 @@ float MODULO_out
 set MODULO_d to ( MODULO_a / MODULO_n )
 set MODULO_out to ( MODULO_a - MODULO_n * MODULO_d )
 ]])
+
 
 chunk('noPickUp',
 nil,
@@ -150,6 +156,9 @@ end
 return {
     process = process,
     chunk = chunk,
+    defaultChunks = defaultChunks,
+    render = render,
+    trimFloat = trimFloat,
     mimics = {
         sine = sine,
         cosine = cosine
